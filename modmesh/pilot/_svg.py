@@ -454,17 +454,21 @@ class SVGFileDialog(PilotFeature):
             cp2d.append(closedp[1])
 
         world = core.WorldFp64()
+        Point = core.Point3dFp64
 
         for i in range(len(sp2d)):
-            for s in sp2d[i]:
-                world.add_segment(s)
+            for j in range(len(sp2d[i])):
+                # the points are reflected to x-axis: (x, y) -> (x, -y)
+                world.add_segment(Point(sp2d[i].x0_at(j), -sp2d[i].y0_at(j)),
+                                  Point(sp2d[i].x1_at(j), -sp2d[i].y1_at(j)))
 
         for i in range(len(cp2d)):
-            for c in cp2d[i]:
-                b = world.add_bezier(p0=c[0],
-                                     p1=c[1],
-                                     p2=c[2],
-                                     p3=c[3])
+            for j in range(len(cp2d[i])):
+                # the points are reflected to x-axis: (x, y) -> (x, -y)
+                b = world.add_bezier(p0=Point(cp2d[i].x0_at(j), -cp2d[i].y0_at(j), 0),
+                                     p1=Point(cp2d[i].x1_at(j), -cp2d[i].y1_at(j), 0),
+                                     p2=Point(cp2d[i].x2_at(j), -cp2d[i].y2_at(j), 0),
+                                     p3=Point(cp2d[i].x3_at(j), -cp2d[i].y3_at(j), 0))
                 b.sample(nlocus=5)
 
         wid = self._mgr.add3DWidget()
