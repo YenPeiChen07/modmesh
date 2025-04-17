@@ -148,11 +148,7 @@ class EPath(object):
         current_pos = start_pos
         last_control = None
         last_cmd = None
-        print(f"[calculating points]: len of commands is {len(commands)}")
         for idx, (cmd, coords) in enumerate(commands):
-            print(f"#{idx} cmd: {cmd}, len of coord: {len(coords)}, coords: {coords}")
-            print(f"start pos: ({start_pos.x}, {start_pos.y})")
-            print(f"current pos: ({current_pos.x}, {current_pos.y})")
             i = 0
             if cmd in ('M', 'm'):
                 # Move position:
@@ -189,10 +185,8 @@ class EPath(object):
                         y_end = y_cur + dy
 
                     end = Point(x_end, y_end, 0)
-
-                    # add a Segment to SegmentPad
                     sp2d.append(Segment(current_pos, end))
-                    print(f"(L, l): add segment, from ({current_pos.x}, {current_pos.y}) to ({end.x}, {end.y})")
+
                     current_pos = end
                     last_control = None
                     i += 2
@@ -204,9 +198,7 @@ class EPath(object):
                     new_x = coords[i] if cmd == 'H' else current_pos[0] + coords[i]
                     old_y = current_pos[1]
                     end = Point(new_x, old_y, 0)
-
                     sp2d.append(Segment(current_pos, end))
-                    print(f"(H, h): add segment, from ({current_pos.x}, {current_pos.y}) to ({end.x}, {end.y})")
 
                     current_pos = end
                     last_control = None
@@ -219,9 +211,7 @@ class EPath(object):
                     old_x = current_pos[0]
                     new_y = coords[i] if cmd == 'V' else current_pos[1] + coords[i]
                     end = Point(old_x, new_y, 0)
-
                     sp2d.append(Segment(current_pos, end))
-                    print(f"(V, v): add segment, from ({current_pos.x}, {current_pos.y}) to ({end.x}, {end.y})")
 
                     current_pos = end
                     last_control = None
@@ -254,7 +244,7 @@ class EPath(object):
                     p2 = Point(x2, y2, 0)
                     p3 = Point(x3, y3, 0)
                     cp2d.append(p0=p0, p1=p1, p2=p2, p3=p3)
-                    print(f"(C, c): add curve, from ({p0.x}, {p0.y}) to ({p3.x}, {p3.y})")
+
                     current_pos = p3
                     last_control = p2
                     i += 6
@@ -290,7 +280,7 @@ class EPath(object):
                     p2 = Point(x2, y2, 0)
                     p3 = Point(x3, y3, 0)
                     cp2d.append(p0=p0, p1=p1, p2=p2, p3=p3)
-                    print(f"(S, s): add curve, from ({p0.x}, {p0.y}) to ({p3.x}, {p3.y})")
+
                     current_pos = p3
                     last_control = p2
                     i += 4
@@ -318,7 +308,7 @@ class EPath(object):
                     p2 = Point(x2, y2, 0)
                     p3 = Point(x2, y2, 0)
                     cp2d.append(p0=p0, p1=p1, p2=p2, p3=p3)
-                    print(f"(T, t): add curve, p0=({p0.x}, {p0.y}), p1=({p1.x}, {p1.y}), p2=({p2.x}, {p2.y}), p3=({p3.x}, {p3.y})")
+
                     current_pos = p3
                     last_control = p1
                     i += 4
@@ -351,7 +341,7 @@ class EPath(object):
                     p2 = Point(x2, y2, 0)
                     p3 = Point(x2, y2, 0)
                     cp2d.append(p0=p0, p1=p1, p2=p2, p3=p3)
-                    print(f"(T, t): add curve, p0=({p0.x}, {p0.y}), p1=({p1.x}, {p1.y}), p2=({p2.x}, {p2.y}), p3=({p3.x}, {p3.y})")
+
                     current_pos = p3
                     last_control = p1
                     i += 2
@@ -359,7 +349,6 @@ class EPath(object):
                 # Draw a elliptical arc curves
                 #   command: [A|a] (relative position in lowercase command)
                 #   parameter: (rx, ry, angle, large-arc-flag, sweep-flag, dx, dy)+
-                print(f"i: {i}")
                 while i + 6 < len(coords):
                     start_pt = current_pos
                     rx, ry, rotation, Flarge_arc, Fsweep, dx, dy = coords[i:i+7]
@@ -377,27 +366,24 @@ class EPath(object):
                     end = Point(x_end, y_end, 0)
                     arc_pts = self.calc_arc2pnts(start_pt, end, rx, ry,
                                                  rotation, Flarge_arc, Fsweep)
-                    
+
                     for p in range(arc_pts.shape[0]-1):
                         p_from = Point(arc_pts[p][0], arc_pts[p][1], 0)
                         p_to = Point(arc_pts[p+1][0], arc_pts[p+1][1], 0)
                         sp2d.append(Segment(p_from, p_to))
-                    print(f"(A, a): add curve with segs, from ({start_pt.x}, {start_pt.y}) to ({end.x}, {end.y})")
+
                     current_pos = end
                     i += 7
-                    print(f"i: {i}")
             elif cmd in ('Z', 'z'):
                 # closed path:
                 #   draw a straight line from the current position to
                 #   the first point in the path.
                 sp2d.append(Segment(current_pos, start_pos))
-                print(f"(Z, z): add segment, from ({current_pos.x}, {current_pos.y}) to ({start_pos.x}, {start_pos.y})")
                 current_pos = start_pos
                 i += 1
             else:
                 i = len(coords)
             last_cmd = cmd
-            print("\n")
         return (sp2d, cp2d)
 
     def parse_dattr(self):
@@ -419,7 +405,6 @@ class EPath(object):
 
         if current_command:
             commands.append((current_command, current_coords))
-        print(f"[parsing dattr]: len of dattr is {len(commands)}")
         return commands
 
     def get_closed_paths(self):
@@ -507,7 +492,6 @@ class SVGFileDialog(PilotFeature):
         svgParser = _PathParser(filename)
         svgParser.parse()
         Epaths = svgParser.get_EPaths()
-        print(f"number of Epath: {len(Epaths)}")
         sp2d = []
         cp2d = []
         for p in Epaths:
