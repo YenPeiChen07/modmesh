@@ -5,6 +5,8 @@ import unittest
 
 import os
 
+import numpy as np
+
 from solvcon import testing
 from solvcon.plot import svg
 
@@ -770,6 +772,335 @@ class SvgPathCommandTC(SvgParserTB):
         self.assertEqual(list(sp2d.y0), [10.0, 10.0, 10.0])
         self.assertEqual(list(sp2d.x1), [20.0, 30.0, 10.0])
         self.assertEqual(list(sp2d.y1), [10.0, 10.0, 10.0])
+
+
+class SvgTransformAttributeTC(SvgParserTB):
+    """
+    Test EShapeBase._parse_transform_attribute() for the SVG `transform`
+    attribute.
+    See more: https://www.w3.org/TR/css-transforms-1/#svg-syntax
+    """
+
+    def _parse(self, transform_attr):
+        shape = svg.EShapeBase(transform_attr=transform_attr)
+        return shape._parse_transform_attribute()
+
+    def test_empty_string(self):
+        self.assertEqual(self._parse(""), [])
+
+    def test_matrix(self):
+        result = self._parse("matrix(1,0,0,1,10,20)")
+        self.assertEqual(
+            result, [('matrix', [1.0, 0.0, 0.0, 1.0, 10.0, 20.0])])
+
+    def test_translate_one_arg(self):
+        result = self._parse("translate(10)")
+        self.assertEqual(result, [('translate', [10.0])])
+
+    def test_translate_two_args(self):
+        result = self._parse("translate(10, 20)")
+        self.assertEqual(result, [('translate', [10.0, 20.0])])
+
+    def test_translate_comma_only(self):
+        result = self._parse("translate(10,20)")
+        self.assertEqual(result, [('translate', [10.0, 20.0])])
+
+    def test_translate_space_only(self):
+        result = self._parse("translate(10 20)")
+        self.assertEqual(result, [('translate', [10.0, 20.0])])
+
+    def test_scale_one_arg(self):
+        result = self._parse("scale(2)")
+        self.assertEqual(result, [('scale', [2.0])])
+
+    def test_scale_two_args(self):
+        result = self._parse("scale(2, 3)")
+        self.assertEqual(result, [('scale', [2.0, 3.0])])
+
+    def test_rotate_one_arg(self):
+        result = self._parse("rotate(45)")
+        self.assertEqual(result, [('rotate', [45.0])])
+
+    def test_rotate_three_args(self):
+        result = self._parse("rotate(45, 10, 20)")
+        self.assertEqual(result, [('rotate', [45.0, 10.0, 20.0])])
+
+    def test_skewx(self):
+        result = self._parse("skewX(30)")
+        self.assertEqual(result, [('skewX', [30.0])])
+
+    def test_skewy(self):
+        result = self._parse("skewY(15)")
+        self.assertEqual(result, [('skewY', [15.0])])
+
+    def test_negative_and_decimal_numbers(self):
+        result = self._parse("translate(-10.5, .5)")
+        self.assertEqual(result, [('translate', [-10.5, 0.5])])
+
+    def test_scientific_notation_numbers(self):
+        result = self._parse("translate(1e2, -2.5e-3)")
+        self.assertEqual(result, [('translate', [100.0, -0.0025])])
+
+    def test_extra_whitespace(self):
+        result = self._parse("  translate( 10 ,  20 )  ")
+        self.assertEqual(result, [('translate', [10.0, 20.0])])
+
+    def test_multiple_transforms(self):
+        result = self._parse("translate(10,20) rotate(45)")
+        self.assertEqual(
+            result,
+            [('translate', [10.0, 20.0]), ('rotate', [45.0])])
+
+    def test_unsupported_function_name(self):
+        with self.assertRaises(ValueError):
+            self._parse("foo(1,2)")
+
+    def test_matrix_wrong_arg_count(self):
+        with self.assertRaises(ValueError):
+            self._parse("matrix(1,2,3)")
+
+    def test_translate_too_many_args(self):
+        with self.assertRaises(ValueError):
+            self._parse("translate(1,2,3)")
+
+    def test_rotate_two_args_invalid(self):
+        with self.assertRaises(ValueError):
+            self._parse("rotate(1,2)")
+
+    def test_skewx_too_many_args(self):
+        with self.assertRaises(ValueError):
+            self._parse("skewX(1,2)")
+
+
+class SvgTransformationMatrixTC(SvgParserTB):
+    """
+    Test EShapeBase._calc_transformation_matrix() for the SVG `transform`
+    attribute functions.
+    """
+
+    def _calc(self, transform_funs):
+        shape = svg.EShapeBase()
+        return shape._calc_transformation_matrix(transform_funs)
+
+    def test_empty_is_identity(self):
+        result = self._calc([])
+        self.assert_allclose(result, np.identity(3))
+
+    def test_matrix(self):
+        result = self._calc([('matrix', [1.0, 2.0, 3.0, 4.0, 5.0, 6.0])])
+        expected = np.array([[1.0, 3.0, 5.0],
+                             [2.0, 4.0, 6.0],
+                             [0.0, 0.0, 1.0]])
+        self.assert_allclose(result, expected)
+
+    def test_translate_one_arg(self):
+        result = self._calc([('translate', [10.0])])
+        expected = np.array([[1.0, 0.0, 10.0],
+                             [0.0, 1.0, 0.0],
+                             [0.0, 0.0, 1.0]])
+        self.assert_allclose(result, expected)
+
+    def test_translate_two_args(self):
+        result = self._calc([('translate', [10.0, 20.0])])
+        expected = np.array([[1.0, 0.0, 10.0],
+                             [0.0, 1.0, 20.0],
+                             [0.0, 0.0, 1.0]])
+        self.assert_allclose(result, expected)
+
+    def test_scale_one_arg(self):
+        result = self._calc([('scale', [2.0])])
+        expected = np.array([[2.0, 0.0, 0.0],
+                             [0.0, 2.0, 0.0],
+                             [0.0, 0.0, 1.0]])
+        self.assert_allclose(result, expected)
+
+    def test_scale_two_args(self):
+        result = self._calc([('scale', [2.0, 3.0])])
+        expected = np.array([[2.0, 0.0, 0.0],
+                             [0.0, 3.0, 0.0],
+                             [0.0, 0.0, 1.0]])
+        self.assert_allclose(result, expected)
+
+    def test_rotate_one_arg(self):
+        result = self._calc([('rotate', [90.0])])
+        expected = np.array([[0.0, -1.0, 0.0],
+                             [1.0, 0.0, 0.0],
+                             [0.0, 0.0, 1.0]])
+        self.assert_allclose(result, expected, atol=1e-14)
+
+    def test_rotate_three_args(self):
+        # Rotate 90 degrees about center (1, 1).
+        result = self._calc([('rotate', [90.0, 1.0, 1.0])])
+        expected = np.array([[0.0, -1.0, 2.0],
+                             [1.0, 0.0, 0.0],
+                             [0.0, 0.0, 1.0]])
+        self.assert_allclose(result, expected, atol=1e-14)
+
+    def test_skewx(self):
+        result = self._calc([('skewX', [45.0])])
+        expected = np.array([[1.0, 1.0, 0.0],
+                             [0.0, 1.0, 0.0],
+                             [0.0, 0.0, 1.0]])
+        self.assert_allclose(result, expected, atol=1e-14)
+
+    def test_skewy(self):
+        result = self._calc([('skewY', [45.0])])
+        expected = np.array([[1.0, 0.0, 0.0],
+                             [1.0, 1.0, 0.0],
+                             [0.0, 0.0, 1.0]])
+        self.assert_allclose(result, expected, atol=1e-14)
+
+    def test_multiple_transforms(self):
+        result = self._calc([('translate', [10.0, 0.0]), ('scale', [2.0])])
+        expected = np.array([[2.0, 0.0, 10.0],
+                             [0.0, 2.0, 0.0],
+                             [0.0, 0.0, 1.0],])
+        self.assert_allclose(result, expected)
+
+    def test_multiple_transforms_with_different_order(self):
+        result = self._calc([('scale', [2.0]), ('translate', [10.0, 0.0])])
+        expected = np.array([[2.0, 0.0, 20.0],
+                             [0.0, 2.0, 0.0],
+                             [0.0, 0.0, 1.0]])
+        self.assert_allclose(result, expected)
+
+
+class SvgAffineTransformTC(SvgParserTB):
+    """
+    Test EShapeBase._transform() applying the parsed SVG `transform`
+    attribute to a shape's SegmentPad and CurvePad point buffers.
+    """
+
+    def test_no_transform_attr(self):
+        d_attr = "M10 10 L20 10"
+        path_element = svg.EPath(d_attr=d_attr, fill_attr="none",
+                                 transform_attr=None)
+        spad = path_element.spads[0]
+        self.assertEqual(list(spad.x0), [10.0])
+        self.assertEqual(list(spad.y0), [10.0])
+        self.assertEqual(list(spad.x1), [20.0])
+        self.assertEqual(list(spad.y1), [10.0])
+
+    def test_translate_segment(self):
+        d_attr = "M10 10 L20 10"
+        path_element = svg.EPath(d_attr=d_attr, fill_attr="none",
+                                 transform_attr="translate(5,3)")
+        spad = path_element.spads[0]
+        self.assertEqual(list(spad.x0), [15.0])
+        self.assertEqual(list(spad.y0), [13.0])
+        self.assertEqual(list(spad.x1), [25.0])
+        self.assertEqual(list(spad.y1), [13.0])
+
+    def test_scale_segment(self):
+        d_attr = "M10 10 L20 10"
+        path_element = svg.EPath(d_attr=d_attr, fill_attr="none",
+                                 transform_attr="scale(2,3)")
+        spad = path_element.spads[0]
+        self.assertEqual(list(spad.x0), [20.0])
+        self.assertEqual(list(spad.y0), [30.0])
+        self.assertEqual(list(spad.x1), [40.0])
+        self.assertEqual(list(spad.y1), [30.0])
+
+    def test_rotate_segment(self):
+        d_attr = "M1 0 L2 0"
+        path_element = svg.EPath(d_attr=d_attr, fill_attr="none",
+                                 transform_attr="rotate(90)")
+        spad = path_element.spads[0]
+        self.assert_allclose(list(spad.x0), [0.0], atol=1e-14)
+        self.assert_allclose(list(spad.y0), [1.0], atol=1e-14)
+        self.assert_allclose(list(spad.x1), [0.0], atol=1e-14)
+        self.assert_allclose(list(spad.y1), [2.0], atol=1e-14)
+
+    def test_translate_curve(self):
+        d_attr = "M10 90 C30 90 25 10 50 10"
+        path_element = svg.EPath(d_attr=d_attr, fill_attr="none",
+                                 transform_attr="translate(5,5)")
+        cpad = path_element.cpads[0]
+        self.assertEqual(list(cpad.p0_at(0)), [15.0, 95.0, 0.0])
+        self.assertEqual(list(cpad.p1_at(0)), [35.0, 95.0, 0.0])
+        self.assertEqual(list(cpad.p2_at(0)), [30.0, 15.0, 0.0])
+        self.assertEqual(list(cpad.p3_at(0)), [55.0, 15.0, 0.0])
+
+    def test_rotate_curve(self):
+        d_attr = "M10 90 C30 90 25 10 50 10"
+
+        # Rotate curve about the origin of the element
+        path_element = svg.EPath(d_attr=d_attr, fill_attr="none",
+                                 transform_attr="rotate(90)")
+        cpad = path_element.cpads[0]
+        self.assert_allclose(list(cpad.p0_at(0)), [-90.0, 10.0, 0.0],
+                             atol=1e-12)
+        self.assert_allclose(list(cpad.p1_at(0)), [-90.0, 30.0, 0.0],
+                             atol=1e-12)
+        self.assert_allclose(list(cpad.p2_at(0)), [-10.0, 25.0, 0.0],
+                             atol=1e-12)
+        self.assert_allclose(list(cpad.p3_at(0)), [-10.0, 50.0, 0.0],
+                             atol=1e-12)
+
+        # Rotate curve about (1, 1)
+        path_element = svg.EPath(d_attr=d_attr, fill_attr="none",
+                                 transform_attr="rotate(90, 1, 1)")
+        cpad = path_element.cpads[0]
+        self.assert_allclose(list(cpad.p0_at(0)), [-88.0, 10.0, 0.0],
+                             atol=1e-12)
+        self.assert_allclose(list(cpad.p1_at(0)), [-88.0, 30.0, 0.0],
+                             atol=1e-12)
+        self.assert_allclose(list(cpad.p2_at(0)), [-8.0, 25.0, 0.0],
+                             atol=1e-12)
+        self.assert_allclose(list(cpad.p3_at(0)), [-8.0, 50.0, 0.0],
+                             atol=1e-12)
+
+    def test_scale_curve(self):
+        d_attr = "M10 90 C30 90 25 10 50 10"
+        path_element = svg.EPath(d_attr=d_attr, fill_attr="none",
+                                 transform_attr="scale(2)")
+        cpad = path_element.cpads[0]
+        self.assertEqual(list(cpad.p0_at(0)), [20.0, 180.0, 0.0])
+        self.assertEqual(list(cpad.p1_at(0)), [60.0, 180.0, 0.0])
+        self.assertEqual(list(cpad.p2_at(0)), [50.0, 20.0, 0.0])
+        self.assertEqual(list(cpad.p3_at(0)), [100.0, 20.0, 0.0])
+
+    def test_skew_curve_along_x_axis(self):
+        d_attr = "M10 90 C30 90 25 10 50 10"
+        tan30 = np.tan(np.radians(30))
+
+        path_element = svg.EPath(d_attr=d_attr, fill_attr="none",
+                                 transform_attr="skewX(30)")
+        cpad = path_element.cpads[0]
+        self.assert_allclose(list(cpad.p0_at(0)),
+                             [10 + 90 * tan30, 90.0, 0.0], atol=1e-9)
+        self.assert_allclose(list(cpad.p1_at(0)),
+                             [30 + 90 * tan30, 90.0, 0.0], atol=1e-9)
+        self.assert_allclose(list(cpad.p2_at(0)),
+                             [25 + 10 * tan30, 10.0, 0.0], atol=1e-9)
+        self.assert_allclose(list(cpad.p3_at(0)),
+                             [50 + 10 * tan30, 10.0, 0.0], atol=1e-9)
+
+    def test_skew_curve_along_y_axis(self):
+        d_attr = "M10 90 C30 90 25 10 50 10"
+        tan30 = np.tan(np.radians(30))
+
+        path_element = svg.EPath(d_attr=d_attr, fill_attr="none",
+                                 transform_attr="skewY(30)")
+        cpad = path_element.cpads[0]
+        self.assert_allclose(list(cpad.p0_at(0)),
+                             [10.0, 90 + 10 * tan30, 0.0], atol=1e-9)
+        self.assert_allclose(list(cpad.p1_at(0)),
+                             [30.0, 90 + 30 * tan30, 0.0], atol=1e-9)
+        self.assert_allclose(list(cpad.p2_at(0)),
+                             [25.0, 10 + 25 * tan30, 0.0], atol=1e-9)
+        self.assert_allclose(list(cpad.p3_at(0)),
+                             [50.0, 10 + 50 * tan30, 0.0], atol=1e-9)
+
+    def test_multiple_transformation(self):
+        d_attr = "M0 0 L1 0"
+        path_element = svg.EPath(d_attr=d_attr, fill_attr="none",
+                                 transform_attr="translate(10,0) scale(2)")
+        spad = path_element.spads[0]
+        self.assertEqual(list(spad.x0), [10.0])
+        self.assertEqual(list(spad.y0), [0.0])
+        self.assertEqual(list(spad.x1), [12.0])
+        self.assertEqual(list(spad.y1), [0.0])
 
 
 class SvgShapeTC(SvgParserTB):
