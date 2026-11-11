@@ -765,8 +765,18 @@ class WorldShapeAccessorTC(unittest.TestCase):
     def test_accessors_run(self):
         self.assertTrue(self.w.shape_is_live(self.sid))
         self.assertEqual(len(self.w.shape_bbox(self.sid)), 4)
-        self.assertEqual(len(self.w.shape_handle(self.sid)), 2)
-        self.assertEqual(len(self.w.shape_obb(self.sid)), 8)
+        self.assertIsInstance(self.w.shape_handle(self.sid),
+                              solvcon.Point3dFp64)
+        self.assertIsInstance(self.w.shape_obb(self.sid), solvcon.PointPadFp64)
+
+    def test_obb_corners_are_world_points(self):
+        # Corners run top-left, top-right, bottom-right, bottom-left, and the
+        # handle sits on the top-left one.
+        corners = [(p.x, p.y, p.z) for p in self.w.shape_obb(self.sid)]
+        self.assertEqual(corners,
+                         [(-2, 1, 0), (2, 1, 0), (2, -1, 0), (-2, -1, 0)])
+        handle = self.w.shape_handle(self.sid)
+        self.assertEqual((handle.x, handle.y, handle.z), (-2, 1, 0))
 
     def test_dead_shape_not_live(self):
         self.w.remove_shape(self.sid)
@@ -1215,7 +1225,7 @@ class WorldMovePointsTC(unittest.TestCase):
     def test_oriented_box_keeps_its_rotation(self):
         def angle():
             obb = self.w.shape_obb(self.sid)
-            return math.atan2(obb[3] - obb[1], obb[2] - obb[0])
+            return math.atan2(obb[1].y - obb[0].y, obb[1].x - obb[0].x)
 
         self.w.rotate_shape(self.sid, math.pi / 6, 0, 0)
         before = angle()

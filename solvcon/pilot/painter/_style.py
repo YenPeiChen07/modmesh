@@ -67,8 +67,8 @@ class Parts:
         two sides give the shape's own width and height rather than the wider
         span a rotated shape covers along the axes.
         """
-        xs = obb[0::2]
-        ys = obb[1::2]
+        xs = [corner.x for corner in obb]
+        ys = [corner.y for corner in obb]
         # Divided before summed: four corners far enough out add up past the
         # double range, and the center would come back infinite.
         return (sum(x / 4 for x in xs), sum(y / 4 for y in ys),

@@ -31,8 +31,8 @@ def _lands_finite(obb, delta):
     the geometry that follows them.
     """
     dx, dy = delta
-    return all(math.isfinite(x + dx) and math.isfinite(y + dy)
-               for x, y in zip(obb[0::2], obb[1::2]))
+    return all(math.isfinite(corner.x + dx) and math.isfinite(corner.y + dy)
+               for corner in obb)
 
 
 class _Field(QtWidgets.QFrame):
@@ -291,7 +291,8 @@ class DesignPage(PaletteStyled):
         if world is None:
             return None
         return (shape, world.shape_type_of(shape),
-                tuple(world.shape_obb(shape)))
+                tuple((corner.x, corner.y)
+                      for corner in world.shape_obb(shape)))
 
     def _selection(self):
         """The active canvas, its world, and its live selection.

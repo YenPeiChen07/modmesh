@@ -358,13 +358,13 @@ void R2DWidget::paintSelection(QPainter & painter) const
     }
     // The oriented bounding box wraps the shape at any orientation, so the
     // box and its top-left handle rotate together and never separate.
-    obb_array_type const obb = m_world->shape_obb(m_selected);
+    std::shared_ptr<PointPadFp64> const obb = m_world->shape_obb(m_selected);
     QPolygonF box;
 
     double sx = 0.0, sy = 0.0;
-    for (size_t i = 0; i < 4; ++i)
+    for (size_t i = 0; i < obb->size(); ++i)
     {
-        m_view.screen_from_world(obb[2 * i], obb[2 * i + 1], sx, sy);
+        m_view.screen_from_world(obb->x(i), obb->y(i), sx, sy);
         box << QPointF(sx, sy);
     }
 
@@ -705,17 +705,17 @@ int32_t R2DWidget::pickShapeAt(QPointF const & screen_pos) const
 R2DWidget::coord2_type R2DWidget::selectionCenterWorld() const
 {
     // Center of the oriented bounding box: midpoint of opposite corners.
-    obb_array_type const obb = m_world->shape_obb(m_selected);
-    return {(obb[0] + obb[4]) * 0.5, (obb[1] + obb[5]) * 0.5};
+    std::shared_ptr<PointPadFp64> const obb = m_world->shape_obb(m_selected);
+    return {(obb->x(0) + obb->x(2)) * 0.5, (obb->y(0) + obb->y(2)) * 0.5};
 }
 
 QPointF R2DWidget::rotateHandlePos() const
 {
-    // The handle anchor is always at the box's top-left corner (obb[0..1]).
-    obb_array_type const obb = m_world->shape_obb(m_selected);
+    // The handle anchor is always at the box's top-left corner (obb corner 0).
+    std::shared_ptr<PointPadFp64> const obb = m_world->shape_obb(m_selected);
     double hx = 0.0, hy = 0.0, cx = 0.0, cy = 0.0;
-    m_view.screen_from_world(obb[0], obb[1], hx, hy);
-    m_view.screen_from_world((obb[0] + obb[4]) * 0.5, (obb[1] + obb[5]) * 0.5, cx, cy);
+    m_view.screen_from_world(obb->x(0), obb->y(0), hx, hy);
+    m_view.screen_from_world((obb->x(0) + obb->x(2)) * 0.5, (obb->y(0) + obb->y(2)) * 0.5, cx, cy);
     double const dx = hx - cx, dy = hy - cy;
     double const len = std::hypot(dx, dy);
     if (len > 1.0e-9)

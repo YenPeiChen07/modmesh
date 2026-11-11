@@ -256,8 +256,6 @@ struct RingEntry
  */
 struct ShapeRecord
 {
-    using bbox_array_type = small_vector<double, 4>; ///< Four corners, (x, y) pairs.
-
     ShapeType type;
     size_t segment_offset; ///< First index in SegmentPad.
     size_t segment_count; ///< Number of segments this shape occupies.
@@ -267,10 +265,8 @@ struct ShapeRecord
     size_t ring_count; ///< Number of rings this shape owns. Zero for non-polygon shapes.
     uint8_t ring_ndim; ///< Dimensionality (2 or 3) of this shape's rings. Zero for non-polygon shapes.
 
-    /// OBB corner x's in world coordinates, ordered TL, TR, BR, BL.
-    bbox_array_type obb_x;
-    /// OBB corner y's in world coordinates, ordered TL, TR, BR, BL.
-    bbox_array_type obb_y;
+    /// Oriented bounding box corners as world points, ordered TL, TR, BR, BL.
+    std::array<Point3d<double>, 4> obb;
 }; /* end struct ShapeRecord */
 
 /**
@@ -467,9 +463,7 @@ public:
     using bbox_type = BoundBox3d<T>;
     using rtree_type = RTree<ShapeEntry<T>, bbox_type>;
 
-    using coord2_type = small_vector<value_type, 2>; ///< An (x, y) pair.
     using bbox_array_type = small_vector<value_type, 4>; ///< As [min_x, min_y, max_x, max_y].
-    using obb_array_type = small_vector<value_type, 8>; ///< Four corners, (x, y) pairs.
 
     template <typename... Args>
     static std::shared_ptr<World<T>> construct(Args &&... args)
@@ -747,27 +741,26 @@ public:
 
     /**
      * World position of a live shape's rotate-handle anchor (the oriented
-     * bounding box's top-left corner), as [x, y]. Carried by every translate
-     * and rotate, so it stays put relative to the shape.
+     * bounding box's top-left corner). Carried by every translate and
+     * rotate, so it stays put relative to the shape.
      */
-    coord2_type shape_handle(int32_t shape_id) const
+    point_type shape_handle(int32_t shape_id) const
     {
-        ShapeRecord const & rec = find_shape_or_throw(shape_id);
-        return {static_cast<value_type>(rec.obb_x[0]), static_cast<value_type>(rec.obb_y[0])};
+        return to_point(find_shape_or_throw(shape_id).obb[0]);
     }
 
     /**
      * Oriented bounding box of a live shape: four world corners ordered
-     * top-left, top-right, bottom-right, bottom-left.
+     * top-left, top-right, bottom-right, bottom-left. The box is planar, so
+     * the pad is 2D and its points read back with z = 0.
      */
-    obb_array_type shape_obb(int32_t shape_id) const
+    std::shared_ptr<point_pad_type> shape_obb(int32_t shape_id) const
     {
         ShapeRecord const & rec = find_shape_or_throw(shape_id);
-        obb_array_type out(8);
-        for (size_t i = 0; i < 4; ++i)
+        auto out = point_pad_type::construct(/* ndim */ 2, /* nelem */ rec.obb.size());
+        for (size_t i = 0; i < rec.obb.size(); ++i)
         {
-            out[2 * i] = static_cast<value_type>(rec.obb_x[i]);
-            out[2 * i + 1] = static_cast<value_type>(rec.obb_y[i]);
+            out->set(i, static_cast<value_type>(rec.obb[i].x()), static_cast<value_type>(rec.obb[i].y()));
         }
         return out;
     }
@@ -904,6 +897,12 @@ private:
      */
     void check_shape_id(int32_t shape_id) const;
 
+    /// ShapeRecord stores the OBB in double; convert one corner to the world's point type.
+    static point_type to_point(Point3d<double> const & p)
+    {
+        return point_type(static_cast<value_type>(p.x()), static_cast<value_type>(p.y()), static_cast<value_type>(p.z()));
+    }
+
     ShapeRecord const & find_shape_or_throw(int32_t shape_id) const
     {
         check_shape_id(shape_id);
@@ -1011,15 +1010,13 @@ int32_t World<T>::register_shape(ShapeType type,
                                  uint8_t ring_ndim)
 {
     auto shape_id = static_cast<int32_t>(m_shape_registry.size());
-    m_shape_registry.push_back(ShapeRecord{type, segment_offset, segment_count, curve_offset, curve_count, ring_offset, ring_count, ring_ndim, {}, {}}); // NOLINT(modernize-use-designated-initializers)
+    m_shape_registry.push_back(ShapeRecord{type, segment_offset, segment_count, curve_offset, curve_count, ring_offset, ring_count, ring_ndim, {}}); // NOLINT(modernize-use-designated-initializers)
     ++m_nshape;
     bbox_type const bb = compute_shape_bbox(m_shape_registry[shape_id]);
 
     // Seed the oriented bounding box to the axis-aligned bbox corners.
     // TODO: store the OBB directly in ShapeRecord at construction.
-    ShapeRecord & seeded = m_shape_registry[shape_id];
-    seeded.obb_x = ShapeRecord::bbox_array_type{bb.min_x(), bb.max_x(), bb.max_x(), bb.min_x()};
-    seeded.obb_y = ShapeRecord::bbox_array_type{bb.max_y(), bb.max_y(), bb.min_y(), bb.min_y()};
+    m_shape_registry[shape_id].obb = {{{bb.min_x(), bb.max_y()}, {bb.max_x(), bb.max_y()}, {bb.max_x(), bb.min_y()}, {bb.min_x(), bb.min_y()}}};
     m_rtree->insert(ShapeEntry<T>{shape_id, bb});
 
     // Record the creation so undo removes the shape and redo brings it back
@@ -1309,10 +1306,10 @@ void World<T>::apply_translate(int32_t shape_id, value_type dx, value_type dy)
         m_curves->y3(idx) += dy;
     }
     // The oriented bounding box rides along with the shape.
-    for (uint32_t i = 0; i < 4; ++i)
+    for (Point3d<double> & corner : rec.obb)
     {
-        rec.obb_x[i] += dx;
-        rec.obb_y[i] += dy;
+        corner.x() += dx;
+        corner.y() += dy;
     }
     // Reinsert with updated bounding box.
     m_rtree->insert(ShapeEntry<T>{shape_id, compute_shape_bbox(rec)});
@@ -1373,12 +1370,12 @@ void World<T>::apply_rotate(int32_t shape_id, value_type angle, value_type cx, v
     // fixed relative to the shape. Done in `double` to match its storage.
     auto const dcos = static_cast<double>(cos_a);
     auto const dsin = static_cast<double>(sin_a);
-    for (uint32_t i = 0; i < 4; ++i)
+    for (Point3d<double> & corner : rec.obb)
     {
-        double const ox = rec.obb_x[i] - cx;
-        double const oy = rec.obb_y[i] - cy;
-        rec.obb_x[i] = cx + dcos * ox - dsin * oy;
-        rec.obb_y[i] = cy + dsin * ox + dcos * oy;
+        double const ox = corner.x() - cx;
+        double const oy = corner.y() - cy;
+        corner.x() = cx + dcos * ox - dsin * oy;
+        corner.y() = cy + dsin * ox + dcos * oy;
     }
     // Reinsert with updated bounding box.
     m_rtree->insert(ShapeEntry<T>{shape_id, compute_shape_bbox(rec)});
@@ -1404,13 +1401,13 @@ void World<T>::refit_obb(ShapeRecord & rec) const
 {
     // The box's x axis runs from its top-left to top-right corner; a box with
     // no width (a vertical line) takes the axis from its height instead.
-    double ux = rec.obb_x[1] - rec.obb_x[0];
-    double uy = rec.obb_y[1] - rec.obb_y[0];
+    double ux = rec.obb[1].x() - rec.obb[0].x();
+    double uy = rec.obb[1].y() - rec.obb[0].y();
     double len = std::hypot(ux, uy);
     if (len <= 0.0)
     {
-        double const vx = rec.obb_x[0] - rec.obb_x[3];
-        double const vy = rec.obb_y[0] - rec.obb_y[3];
+        double const vx = rec.obb[0].x() - rec.obb[3].x();
+        double const vy = rec.obb[0].y() - rec.obb[3].y();
         ux = vy;
         uy = -vx;
         len = std::hypot(ux, uy);
@@ -1457,8 +1454,7 @@ void World<T>::refit_obb(ShapeRecord & rec) const
     std::array<double, 4> const bs{bmax, bmax, bmin, bmin};
     for (uint32_t i = 0; i < 4; ++i)
     {
-        rec.obb_x[i] = as[i] * ux + bs[i] * vx;
-        rec.obb_y[i] = as[i] * uy + bs[i] * vy;
+        rec.obb[i] = Point3d<double>(as[i] * ux + bs[i] * vx, as[i] * uy + bs[i] * vy);
     }
 }
 
